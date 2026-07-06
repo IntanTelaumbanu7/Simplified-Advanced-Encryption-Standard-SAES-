@@ -1,0 +1,7 @@
+<div class="state-matrix">
+{% for r in range(2) %}
+  {% for c in range(2) %}
+    <div><b>{{ st.before_hex[r][c] }}</b><small>{{ st.before[r][c] }}</small></div>
+  {% endfor %}
+{% endfor %}
+</div>

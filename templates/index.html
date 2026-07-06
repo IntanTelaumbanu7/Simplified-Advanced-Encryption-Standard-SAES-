@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Web Simulasi S-AES 16-bit</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<header class="hero">
+  <div>
+    <h1>Web Simulasi S-AES 16-bit</h1>
+    <p>Aplikasi enkripsi dan dekripsi S-AES dengan Key Expansion, AddRoundKey, SubNibbles, ShiftRows, MixColumns, dan proses invers secara step-by-step.</p>
+  </div>
+</header>
+
+<main class="container">
+  <section class="card form-card">
+    <h2>Input Data</h2>
+    <form method="post" id="saesForm">
+      <label>Plaintext / Ciphertext 16-bit</label>
+      <input name="text" maxlength="16" placeholder="contoh: 1101011100101000" value="{{ data.text }}" required pattern="[01]{16}">
+      <label>Kunci 16-bit</label>
+      <input name="key" maxlength="16" placeholder="contoh: 0100101011110101" value="{{ data.key }}" required pattern="[01]{16}">
+      <label>Mode Operasi</label>
+      <div class="radio-row">
+        <label><input type="radio" name="mode" value="encrypt" {% if data.mode == 'encrypt' %}checked{% endif %}> Enkripsi</label>
+        <label><input type="radio" name="mode" value="decrypt" {% if data.mode == 'decrypt' %}checked{% endif %}> Dekripsi</label>
+      </div>
+      <div class="actions">
+        <button class="primary" type="submit">SUBMIT</button>
+        <button class="secondary" type="reset" onclick="setTimeout(()=>location.href='/',50)">RESET</button>
+      </div>
+    </form>
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  </section>
+
+  {% if result %}
+  <section class="card output-card">
+    <h2>Output {{ 'Ciphertext' if result.mode == 'encrypt' else 'Plaintext' }}</h2>
+    <div class="output-grid">
+      <div><span>Biner 16-bit</span><strong id="outBin">{{ result.result_bin }}</strong></div>
+      <div><span>Heksadesimal</span><strong>0x{{ result.result_hex }}</strong></div>
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="card">
+    <h2>Tabel Referensi</h2>
+    <div class="ref-grid">
+      <div>
+        <h3>S-Box S-AES</h3>
+        <table class="ref"><tr><th>Input</th>{% for i in range(16) %}<th>{{ '%X'|format(i) }}</th>{% endfor %}</tr><tr><th>Output</th>{% for x in sbox %}<td>{{ x }}</td>{% endfor %}</tr></table>
+      </div>
+      <div>
+        <h3>Inverse S-Box</h3>
+        <table class="ref"><tr><th>Input</th>{% for i in range(16) %}<th>{{ '%X'|format(i) }}</th>{% endfor %}</tr><tr><th>Output</th>{% for x in inv_sbox %}<td>{{ x }}</td>{% endfor %}</tr></table>
+      </div>
+    </div>
+    <div class="matrix-ref">
+      <div><b>Matriks MixColumns</b><pre>| 1 4 |
+| 4 1 |</pre></div>
+      <div><b>Matriks InvMixColumns</b><pre>| 9 2 |
+| 2 9 |</pre></div>
+      <div><b>Konstanta RCON</b><p>RCON1 = 1000 0000 (0x80)<br>RCON2 = 0011 0000 (0x30)</p></div>
+      <div><b>GF(2^4)</b><p>Polinomial irredusibel: x⁴ + x + 1 (0x13)</p></div>
+    </div>
+  </section>
+
+  {% if result %}
+  <section class="card">
+    <button class="toggle" onclick="toggleSteps()">Tampilkan / Sembunyikan Step-by-step</button>
+    <div id="steps">
+      <h2>A. Key Expansion</h2>
+      <div class="key-grid">
+        {% for key, value in result.key_expansion.items() %}
+          <div><span>{{ key }}</span><code>{{ value }}</code></div>
+        {% endfor %}
+      </div>
+
+      <h2>B. Proses {{ 'Enkripsi' if result.mode == 'encrypt' else 'Dekripsi' }}</h2>
+      {% for st in result.steps %}
+        <article class="step">
+          <h3>{{ loop.index }}. {{ st.title }}</h3>
+          {% if st.key %}<p class="small">Subkunci: <code>{{ st.key }}</code></p>{% endif %}
+          <div class="state-wrap">
+            <div><h4>State Sebelum</h4>{% include 'matrix.html' with context %}</div>
+            <div><h4>State Sesudah</h4><div class="state-matrix">{% for r in range(2) %}{% for c in range(2) %}<div><b>{{ st.after_hex[r][c] }}</b><small>{{ st.after[r][c] }}</small></div>{% endfor %}{% endfor %}</div></div>
+          </div>
+          {% if st.notes %}<ul class="notes">{% for n in st.notes %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
+        </article>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+</main>
+<script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
