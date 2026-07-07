@@ -35,59 +35,164 @@ def state_to_hex(s):
 def state_to_bin(s):
     return [[b(c) for c in row] for row in s]
 
+# ============================
+# GF(2^4) Addition
+# ============================
+def GFAdd(a, b):
+    """
+    Penjumlahan pada GF(2^4)
+    dilakukan menggunakan operasi XOR.
+    """
+    return a ^ b
+
 def xor_state_key(s, key16):
     k = int_to_state(key16)
-    return [[s[r][c] ^ k[r][c] for c in range(2)] for r in range(2)]
+    return [[GFAdd(s[r][c], k[r][c]) for c in range(2)] for r in range(2)]
 
 def sub_word(byte):
     hi, lo = (byte >> 4) & 0xF, byte & 0xF
-    return (SBOX[hi] << 4) | SBOX[lo]
+    return (SubNibble(hi) << 4) | SubNibble(lo)
 
 def rot_word(byte):
     return ((byte & 0xF) << 4) | ((byte >> 4) & 0xF)
-
 def key_expansion(key16):
+    # Membagi key 16-bit menjadi dua word (8-bit)
     w0 = (key16 >> 8) & 0xFF
     w1 = key16 & 0xFF
-    rw1 = rot_word(w1); sw1 = sub_word(rw1)
-    w2 = w0 ^ sw1 ^ RCON1
-    w3 = w2 ^ w1
-    rw3 = rot_word(w3); sw3 = sub_word(rw3)
-    w4 = w2 ^ sw3 ^ RCON2
-    w5 = w4 ^ w3
-    keys = [(w0 << 8) | w1, (w2 << 8) | w3, (w4 << 8) | w5]
-    steps = {
-        'w0': b(w0,8), 'w1': b(w1,8), 'rot_w1': b(rw1,8), 'sub_rot_w1': b(sw1,8),
-        'w2_calc': f'{b(w0,8)} XOR {b(sw1,8)} XOR {b(RCON1,8)} = {b(w2,8)}',
-        'w2': b(w2,8), 'w3_calc': f'{b(w2,8)} XOR {b(w1,8)} = {b(w3,8)}', 'w3': b(w3,8),
-        'rot_w3': b(rw3,8), 'sub_rot_w3': b(sw3,8),
-        'w4_calc': f'{b(w2,8)} XOR {b(sw3,8)} XOR {b(RCON2,8)} = {b(w4,8)}',
-        'w4': b(w4,8), 'w5_calc': f'{b(w4,8)} XOR {b(w3,8)} = {b(w5,8)}', 'w5': b(w5,8),
-        'K0': b(keys[0],16), 'K1': b(keys[1],16), 'K2': b(keys[2],16),
-        'K0_hex': h(keys[0],4), 'K1_hex': h(keys[1],4), 'K2_hex': h(keys[2],4)
-    }
-    return keys, steps
 
-def gf_mul(a, c):
-    res = 0
-    aa = a
-    cc = c
-    for _ in range(4):
-        if cc & 1:
-            res ^= aa
-        carry = aa & 0x8
-        aa = (aa << 1) & 0xF
+    # Membentuk w2 dan w3
+    rw1 = rot_word(w1)
+    sw1 = sub_word(rw1)
+
+    w2 = GFAdd(GFAdd(w0, sw1), RCON1)
+    w3 = GFAdd(w2, w1)
+
+    # Membentuk w4 dan w5
+    rw3 = rot_word(w3)
+    sw3 = sub_word(rw3)
+
+    w4 = GFAdd(GFAdd(w2, sw3), RCON2)
+    w5 = GFAdd(w4, w3)
+
+    # Round Keys
+    keys = [
+        (w0 << 8) | w1,
+        (w2 << 8) | w3,
+        (w4 << 8) | w5
+    ]
+
+    # Menyimpan langkah-langkah Key Expansion
+    steps = {
+        'w0': b(w0, 8),
+        'w1': b(w1, 8),
+
+        'rot_w1': b(rw1, 8),
+        'sub_rot_w1': b(sw1, 8),
+
+        'w2_calc': f'{b(w0,8)} XOR {b(sw1,8)} XOR {b(RCON1,8)} = {b(w2,8)}',
+        'w2': b(w2, 8),
+
+        'w3_calc': f'{b(w2,8)} XOR {b(w1,8)} = {b(w3,8)}',
+        'w3': b(w3, 8),
+
+        'rot_w3': b(rw3, 8),
+        'sub_rot_w3': b(sw3, 8),
+
+        'w4_calc': f'{b(w2,8)} XOR {b(sw3,8)} XOR {b(RCON2,8)} = {b(w4,8)}',
+        'w4': b(w4, 8),
+
+        'w5_calc': f'{b(w4,8)} XOR {b(w3,8)} = {b(w5,8)}',
+        'w5': b(w5, 8),
+
+        'K0': b(keys[0], 16),
+        'K1': b(keys[1], 16),
+        'K2': b(keys[2], 16),
+
+        'K0_hex': h(keys[0], 4),
+        'K1_hex': h(keys[1], 4),
+        'K2_hex': h(keys[2], 4)
+    }
+
+    return keys, steps
+# ============================
+# GF(2^4) Multiplication
+# ============================
+def GFMul(a, b):
+    """
+    Melakukan perkalian pada Galois Field GF(2^4)
+    menggunakan polinomial irreduksibel:
+
+        x^4 + x + 1
+
+    yang direpresentasikan dalam bentuk biner sebagai
+    10011 (0x13).
+
+    Hasil perkalian direduksi sehingga tetap berada
+    pada rentang 4 bit (0–15).
+    """
+
+    result = 0
+
+    while b:
+
+        # Jika bit LSB pada pengali bernilai 1,
+        # tambahkan (XOR) nilai a ke hasil.
+        if b & 1:
+            result ^= a
+
+        # Cek apakah bit x^3 aktif
+        carry = a & 0x8
+
+        # Geser a satu bit ke kiri
+        a <<= 1
+
+        # Jika terjadi overflow (muncul x^4),
+        # lakukan reduksi menggunakan
+        # x^4 + x + 1.
+        #
+        # Setelah bit x^4 dibuang,
+        # nilai yang di-XOR adalah 0x3.
         if carry:
-            aa ^= 0x3  # reduksi dari x^4 = x+1 (0x13 -> 0x3 setelah buang bit x^4)
-        cc >>= 1
-    return res & 0xF
+            a ^= 0x3
+
+        # Pertahankan hanya 4 bit
+        a &= 0xF
+
+        # Geser pengali ke kanan
+        b >>= 1
+
+    return result & 0xF
+
+# ============================
+# SubNibble
+# ============================
+def SubNibble(value):
+    """
+    Melakukan substitusi nibble
+    menggunakan tabel S-Box.
+    """
+    return SBOX[value]
+
+# ============================
+# InvSubNibble
+# ============================
+def InvSubNibble(value):
+    """
+    Melakukan substitusi nibble
+    menggunakan Inverse S-Box.
+    """
+    return INV_SBOX[value]
 
 def gf_expr(a, c):
-    return f'{h(c)}×{h(a)} = {h(gf_mul(a,c))} ({b(c)}×{b(a)} → {b(gf_mul(a,c))})'
+    result = GFMul(a, c)
+    return f'{h(c)}×{h(a)} = {h(result)} ({b(c)}×{b(a)} → {b(result)})'
 
 def sub_nibbles(s, inv=False):
-    box = INV_SBOX if inv else SBOX
-    return [[box[s[r][c]] for c in range(2)] for r in range(2)]
+
+    if inv:
+        return [[InvSubNibble(s[r][c]) for c in range(2)] for r in range(2)]
+
+    return [[SubNibble(s[r][c]) for c in range(2)] for r in range(2)]
 
 def sub_details(before, after):
     out=[]
@@ -111,10 +216,17 @@ def mix_columns(s, inv=False):
     details=[]
     for c in range(2):
         a0, a1 = s[0][c], s[1][c]
-        out[0][c] = gf_mul(a0,m[0][0]) ^ gf_mul(a1,m[0][1])
-        out[1][c] = gf_mul(a0,m[1][0]) ^ gf_mul(a1,m[1][1])
-        details.append(f'Kolom {c+1} atas: ({gf_expr(a0,m[0][0])}) XOR ({gf_expr(a1,m[0][1])}) = {h(out[0][c])} ({b(out[0][c])})')
-        details.append(f'Kolom {c+1} bawah: ({gf_expr(a0,m[1][0])}) XOR ({gf_expr(a1,m[1][1])}) = {h(out[1][c])} ({b(out[1][c])})')
+        out[0][c] = GFAdd(
+            GFMul(a0, m[0][0]),
+            GFMul(a1, m[0][1])
+        )
+        out[1][c] = GFAdd(
+            GFMul(a0, m[1][0]),
+            GFMul(a1, m[1][1])
+        )
+        
+        details.append(f'Kolom {c+1} atas: ({gf_expr(a0, m[0][0])}) XOR ({gf_expr(a1, m[0][1])}) = {h(out[0][c])} ({b(out[0][c])})')
+        details.append(f'Kolom {c+1} bawah: ({gf_expr(a0, m[1][0])}) XOR ({gf_expr(a1, m[1][1])}) = {h(out[1][c])} ({b(out[1][c])})')
     return out, details
 
 def add_step(steps, title, before, after, notes=None, key=None):
